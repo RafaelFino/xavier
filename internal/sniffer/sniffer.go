@@ -11,7 +11,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"	
 )
 
 type DnsMsg struct {
@@ -39,7 +39,8 @@ type DnsSniffer struct {
 }
 
 func New(logger *logrus.Logger, callback DNSQueryRequest) *DnsSniffer {
-	return &DnsSniffer{Hostname = os.Hostname(), logger = logger, callback = callback}
+	hostname, _ := os.Hostname()
+	return &DnsSniffer{Hostname: hostname, logger: logger, callback: callback}
 }
 
 func (s *DnsSniffer) Start() error {

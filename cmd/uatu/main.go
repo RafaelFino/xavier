@@ -10,7 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"internal/sniffer"
+	"ithub.com/RafaelFino/xavier/internal/sniffer"
 )
 
 var logger *logrus.Logger
@@ -23,6 +23,8 @@ func main() {
 	logger.SetFormatter(customFormatter)
 
 	s := sniffer.New(logger, dnsMsg)
+
+	s.Start()
 }
 
 func dnsMsg(msg *sniffer.DnsSniffer) {
