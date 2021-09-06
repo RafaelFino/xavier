@@ -1,4 +1,4 @@
-package sniffer
+package dnssniffer
 
 import (
 	"fmt"

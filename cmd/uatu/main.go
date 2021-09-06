@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 
+	"github.com/google/netstack/tcpip/link/sniffer"
 	"github.com/sirupsen/logrus"
 
 	"github.com/RafaelFino/xavier/internal/datawriter"
-	"github.com/RafaelFino/xavier/internal/sniffer"
-	"github.com/RafaelFino/xavier/internal/watcher"
+	sniffer "github.com/RafaelFino/xavier/internal/dns-sniffer"
+	pw "github.com/RafaelFino/xavier/internal/process-sniffer"
 )
 
 var logger *logrus.Logger
@@ -22,7 +23,7 @@ func main() {
 	ozymandias := datawriter.New(logger)
 
 	s := sniffer.New(logger, ozymandias.ReceiveDNSMessage)
-	w := watcher.New(logger, ozymandias.ReceiveProcesses)
+	w := pw.New(logger, ozymandias.ReceiveProcesses)
 
 	fmt.Scanln()
 
