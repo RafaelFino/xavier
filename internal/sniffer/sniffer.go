@@ -29,20 +29,30 @@ type DnsMsg struct {
 	Hostname        string
 }
 
-type DNSQueryRequest func() (msg *DnsMsg)
+type DNSQueryRequest func(*DnsMsg)
 
 type DnsSniffer struct {
-	Hostname string
-	logger   *logrus.Logger
-	callback DNSQueryRequest
+	Hostname  string
+	logger    *logrus.Logger
+	callback  DNSQueryRequest
+	endSignal chan bool
 }
 
 func New(logger *logrus.Logger, callback DNSQueryRequest) *DnsSniffer {
 	hostname, _ := os.Hostname()
-	return &DnsSniffer{Hostname: hostname, logger: logger, callback: callback}
+	ret := &DnsSniffer{
+		Hostname:  hostname,
+		logger:    logger,
+		callback:  callback,
+		endSignal: make(chan bool),
+	}
+
+	go ret.start()
+
+	return ret
 }
 
-func (s *DnsSniffer) Start() error {
+func (s *DnsSniffer) start() error {
 	s.logger.Infof("Starting...")
 
 	devices, devErr := pcap.FindAllDevs()
@@ -68,6 +78,10 @@ func (s *DnsSniffer) Start() error {
 	return nil
 }
 
+func (s *DnsSniffer) Stop() {
+	s.endSignal <- true
+}
+
 func (s *DnsSniffer) read(dev pcap.Interface) {
 	var eth layers.Ethernet
 	var ip4 layers.IPv4
@@ -91,60 +105,66 @@ func (s *DnsSniffer) read(dev pcap.Interface) {
 
 	decodedLayers := make([]gopacket.LayerType, 0, 10)
 	for {
-		data, _, err := handle.ReadPacketData()
-		if err != nil {
-			s.logger.Errorf("Error reading packet data: ", err)
-			continue
-		}
+		select {
+		case <-s.endSignal:
+			s.logger.Infof("Stop requested")
+			return
+		default:
+			data, _, err := handle.ReadPacketData()
+			if err != nil {
+				s.logger.Errorf("Error reading packet data: ", err)
+				continue
+			}
 
-		if err = parser.DecodeLayers(data, &decodedLayers); err == nil {
-			for _, typ := range decodedLayers {
-				switch typ {
-				case layers.LayerTypeIPv4:
-					SrcIP = ip4.SrcIP.String()
-					DstIP = ip4.DstIP.String()
-				case layers.LayerTypeIPv6:
-					SrcIP = ip6.SrcIP.String()
-					DstIP = ip6.DstIP.String()
-				case layers.LayerTypeDNS:
-					dnsOpCode := int(dns.OpCode)
-					dnsANCount := int(dns.ANCount)
+			if err = parser.DecodeLayers(data, &decodedLayers); err == nil {
+				for _, typ := range decodedLayers {
+					switch typ {
+					case layers.LayerTypeIPv4:
+						SrcIP = ip4.SrcIP.String()
+						DstIP = ip4.DstIP.String()
+					case layers.LayerTypeIPv6:
+						SrcIP = ip6.SrcIP.String()
+						DstIP = ip6.DstIP.String()
+					case layers.LayerTypeDNS:
+						dnsOpCode := int(dns.OpCode)
+						dnsANCount := int(dns.ANCount)
 
-					if (dnsANCount == 0 && int(dns.ResponseCode) > 0) || (dnsANCount > 0) {
-						for _, dnsQuestion := range dns.Questions {
-							d := &DnsMsg{Timestamp: time.Now(),
-								Device:          dev.Name,
-								Message:         "DNS query detected",
-								SourceIP:        SrcIP,
-								DestinationIP:   DstIP,
-								Query:           string(dnsQuestion.Name),
-								DnsOpCode:       strconv.Itoa(dnsOpCode),
-								DnsResponseCode: int(dns.ResponseCode),
-								NumberOfAnswers: strconv.Itoa(dnsANCount),
-								Hostname:        s.Hostname}
+						if (dnsANCount == 0 && int(dns.ResponseCode) > 0) || (dnsANCount > 0) {
+							for _, dnsQuestion := range dns.Questions {
+								d := &DnsMsg{Timestamp: time.Now(),
+									Device:          dev.Name,
+									Message:         "DNS query detected",
+									SourceIP:        SrcIP,
+									DestinationIP:   DstIP,
+									Query:           string(dnsQuestion.Name),
+									DnsOpCode:       strconv.Itoa(dnsOpCode),
+									DnsResponseCode: int(dns.ResponseCode),
+									NumberOfAnswers: strconv.Itoa(dnsANCount),
+									Hostname:        s.Hostname}
 
-							if dnsANCount > 0 {
-								for _, dnsAnswer := range dns.Answers {
-									d.AnswerTTL = append(d.AnswerTTL, fmt.Sprint(dnsAnswer.TTL))
-									if dnsAnswer.IP.String() != "<nil>" {
-										d.Answer = append(d.Answer, dnsAnswer.IP.String())
+								if dnsANCount > 0 {
+									for _, dnsAnswer := range dns.Answers {
+										d.AnswerTTL = append(d.AnswerTTL, fmt.Sprint(dnsAnswer.TTL))
+										if dnsAnswer.IP.String() != "<nil>" {
+											d.Answer = append(d.Answer, dnsAnswer.IP.String())
+										}
 									}
 								}
+
+								s.sendMsg(d)
 							}
-
-							s.sendMsg(d)
 						}
-					}
 
+					}
 				}
+			} else {
+				//s.logger.Debugf("Error encountered: %s: %s", err, data)
 			}
-		} else {
-			s.logger.Errorf("Error encountered: %s: %s", err, data)
 		}
 	}
 }
 
 func (s *DnsSniffer) sendMsg(msg *DnsMsg) {
 	s.logger.Debugf("[%s:%s] %s: %s", msg.Hostname, msg.Device, msg.Message, msg.Query)
-	//callback
+	s.callback(msg)
 }

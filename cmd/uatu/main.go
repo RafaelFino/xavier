@@ -1,9 +1,13 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/sirupsen/logrus"
 
+	"github.com/RafaelFino/xavier/internal/datawriter"
 	"github.com/RafaelFino/xavier/internal/sniffer"
+	"github.com/RafaelFino/xavier/internal/watcher"
 )
 
 var logger *logrus.Logger
@@ -15,11 +19,14 @@ func main() {
 	customFormatter.FullTimestamp = true
 	logger.SetFormatter(customFormatter)
 
-	s := sniffer.New(logger, receiveDnsMsg)
+	ozymandias := datawriter.New(logger)
 
-	s.Start()
-}
+	s := sniffer.New(logger, ozymandias.ReceiveDNSMessage)
+	w := watcher.New(logger, ozymandias.ReceiveProcesses)
 
-func receiveDnsMsg(msg *sniffer.DnsMsg) {
-	logger.Infof(" UATU [%s:%s] %s: %s", msg.Hostname, msg.Device, msg.Message, msg.Query)
+	fmt.Scanln()
+
+	s.Stop()
+	w.Stop()
+	ozymandias.Stop()
 }
