@@ -3,12 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/google/netstack/tcpip/link/sniffer"
 	"github.com/sirupsen/logrus"
 
 	"github.com/RafaelFino/xavier/internal/datawriter"
 	sniffer "github.com/RafaelFino/xavier/internal/dns-sniffer"
-	pw "github.com/RafaelFino/xavier/internal/process-sniffer"
+	pw "github.com/RafaelFino/xavier/internal/process-watcher"
 )
 
 var logger *logrus.Logger
