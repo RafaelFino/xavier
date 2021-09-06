@@ -11,7 +11,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/sirupsen/logrus"	
+	"github.com/sirupsen/logrus"
 )
 
 type DnsMsg struct {
@@ -20,9 +20,9 @@ type DnsMsg struct {
 	Message         string
 	SourceIP        string
 	DestinationIP   string
-	DnsQuery        string
-	DnsAnswer       []string
-	DnsAnswerTTL    []string
+	Query           string
+	Answer          []string
+	AnswerTTL       []string
 	NumberOfAnswers string
 	DnsResponseCode int
 	DnsOpCode       string
@@ -33,9 +33,8 @@ type DNSQueryRequest func() (msg *DnsMsg)
 
 type DnsSniffer struct {
 	Hostname string
-	logger *logrus.Logger
+	logger   *logrus.Logger
 	callback DNSQueryRequest
-	
 }
 
 func New(logger *logrus.Logger, callback DNSQueryRequest) *DnsSniffer {
@@ -49,6 +48,7 @@ func (s *DnsSniffer) Start() error {
 	devices, devErr := pcap.FindAllDevs()
 	if devErr != nil {
 		s.logger.Fatal(devErr)
+		return devErr
 	}
 
 	for _, device := range devices {
@@ -59,11 +59,13 @@ func (s *DnsSniffer) Start() error {
 			}
 			s.logger.Infof("[%s] Addresses: [%s]", device.Name, strings.Join(adds, ", "))
 			s.logger.Infof("[%s] Starting to read...", device.Name)
-			go read(device)
+			go s.read(device)
 		} else {
 			s.logger.Debugf("Device with no addresses, ignoring %s", device.Name)
 		}
 	}
+
+	return nil
 }
 
 func (s *DnsSniffer) read(dev pcap.Interface) {
@@ -115,17 +117,17 @@ func (s *DnsSniffer) read(dev pcap.Interface) {
 								Message:         "DNS query detected",
 								SourceIP:        SrcIP,
 								DestinationIP:   DstIP,
-								DnsQuery:        string(dnsQuestion.Name),
+								Query:           string(dnsQuestion.Name),
 								DnsOpCode:       strconv.Itoa(dnsOpCode),
 								DnsResponseCode: int(dns.ResponseCode),
 								NumberOfAnswers: strconv.Itoa(dnsANCount),
-								Hostname:        hostname}
+								Hostname:        s.Hostname}
 
 							if dnsANCount > 0 {
 								for _, dnsAnswer := range dns.Answers {
-									d.DnsAnswerTTL = append(d.DnsAnswerTTL, fmt.Sprint(dnsAnswer.TTL))
+									d.AnswerTTL = append(d.AnswerTTL, fmt.Sprint(dnsAnswer.TTL))
 									if dnsAnswer.IP.String() != "<nil>" {
-										d.DnsAnswer = append(d.DnsAnswer, dnsAnswer.IP.String())
+										d.Answer = append(d.Answer, dnsAnswer.IP.String())
 									}
 								}
 							}
@@ -143,6 +145,6 @@ func (s *DnsSniffer) read(dev pcap.Interface) {
 }
 
 func (s *DnsSniffer) sendMsg(msg *DnsMsg) {
-	s.logger.Debugf("[%s:%s] %s: %s", msg.Hostname, msg.Device, msg.Message, msg.DnsQuery)
+	s.logger.Debugf("[%s:%s] %s: %s", msg.Hostname, msg.Device, msg.Message, msg.Query)
 	//callback
 }

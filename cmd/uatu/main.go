@@ -1,16 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"net"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/sirupsen/logrus"
 
-	"ithub.com/RafaelFino/xavier/internal/sniffer"
+	"github.com/RafaelFino/xavier/internal/sniffer"
 )
 
 var logger *logrus.Logger
@@ -22,11 +15,11 @@ func main() {
 	customFormatter.FullTimestamp = true
 	logger.SetFormatter(customFormatter)
 
-	s := sniffer.New(logger, dnsMsg)
+	s := sniffer.New(logger, receiveDnsMsg)
 
 	s.Start()
 }
 
-func dnsMsg(msg *sniffer.DnsSniffer) {
-	logger.Infof(" UATU [%s:%s] %s: %s", msg.Hostname, msg.Device, msg.Message, msg.DnsQuery)
+func receiveDnsMsg(msg *sniffer.DnsMsg) {
+	logger.Infof(" UATU [%s:%s] %s: %s", msg.Hostname, msg.Device, msg.Message, msg.Query)
 }
