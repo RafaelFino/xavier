@@ -1,19 +1,26 @@
 package pw
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
-	"github.com/mitchellh/go-ps"
+	//"github.com/mitchellh/go-ps"
+
+	ps "github.com/shirou/gopsutil/v3/process"
 	"github.com/sirupsen/logrus"
 )
 
 type ProcessInfo struct {
-	Pid        int
-	PPid       int
-	Executable string
-	Order      int
-	Timestamp  time.Time
-	Interval   int64
+	Pid        int32         `json:"pid"`
+	Order      int           `json:"order"`
+	Timestamp  time.Time     `json:"timestamp"`
+	Interval   int64         `json:"interval"`
+	Name       string        `json:"name"`
+	Status     string        `json:"status"`
+	Parent     int32         `json:"parent"`
+	CreateTime time.Time     `json:"create-time"`
+	LifeTime   time.Duration `json:"life-time"`
 }
 
 type ProcessCallback func([]*ProcessInfo)
@@ -68,15 +75,48 @@ func (p *ProcessWatcher) Execute() {
 
 	ret := make([]*ProcessInfo, len(processes))
 	for i, c := range processes {
+		ct := p.getInfoTime(c.CreateTime)
 		ret[i] = &ProcessInfo{
 			Order:      i,
-			Pid:        c.Pid(),
-			PPid:       c.PPid(),
-			Executable: c.Executable(),
+			Pid:        c.Pid,
 			Timestamp:  time.Now(),
 			Interval:   p.interval,
+			Name:       p.getInfo(c.Name),
+			Status:     p.getInfoArr(c.Status),
+			CreateTime: ct,
+			LifeTime:   time.Since(ct),
 		}
 	}
 
 	p.callback(ret)
+}
+
+func (p *ProcessWatcher) getInfo(f func() (string, error)) string {
+	ret, err := f()
+
+	if err != nil {
+		p.logger.Errorf("Fail to try get process info: %s", err.Error())
+	}
+
+	return fmt.Sprint(ret)
+}
+
+func (p *ProcessWatcher) getInfoArr(f func() ([]string, error)) string {
+	ret, err := f()
+
+	if err != nil {
+		p.logger.Errorf("Fail to try get process info: %s", err.Error())
+	}
+
+	return strings.Join(ret, ",")
+}
+
+func (p *ProcessWatcher) getInfoTime(f func() (int64, error)) time.Time {
+	ret, err := f()
+
+	if err != nil {
+		p.logger.Errorf("Fail to try get process info: %s", err.Error())
+	}
+
+	return time.UnixMilli(ret)
 }

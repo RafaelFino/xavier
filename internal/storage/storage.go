@@ -88,8 +88,8 @@ func (s *Storage) check() error {
 var createDBScript = `
 CREATE TABLE IF NOT EXISTS DNS_MSGS
 (	
-	Id INTEGER PRIMARY KEY AUTOINCREMENT,
-	CreatedAt		TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
+	Id INTEGER 		PRIMARY KEY AUTOINCREMENT,
+	CreatedAt		TIMESTAMP DEFAULT (datetime('now','localtime')),	
 	Device          TEXT DEFAULT NULL,
 	Message         TEXT DEFAULT NULL,
 	SourceIP        TEXT DEFAULT NULL,
@@ -101,34 +101,38 @@ CREATE TABLE IF NOT EXISTS DNS_MSGS
 	DnsResponseCode TEXT DEFAULT NULL,
 	DnsOpCode       TEXT DEFAULT NULL,
 	Hostname        TEXT DEFAULT NULL,
-	ReportedAt		NUMERIC DEFAULT NULL
+	ReportedAt		TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS PROCESS_EVENTS
 (	
 	Id INTEGER PRIMARY KEY AUTOINCREMENT,
-	CreatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
-	Executable	TEXT NOT NULL,
+	CreatedAt 	TEXT DEFAULT (datetime('now','localtime')),	
+	Name		TEXT NOT NULL,
 	Interval 	INTEGER DEFAULT 10,
-	ReportedAt	NUMERIC DEFAULT NULL
+	Status		TEXT DEFAULT NULL,
+	ReportedAt	TEXT DEFAULT NULL,
+	LifeTime	INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS PROCESS_SUM
 (	
-	Executable	TEXT PRIMARY KEY,
-	CreatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
-	UpdatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
+	Name		TEXT PRIMARY KEY,
+	Status		TEXT DEFAULT NULL,
+	CreatedAt 	TEXT DEFAULT (datetime('now','localtime')),	
+	UpdatedAt 	TIMESTAMP DEFAULT (datetime('now','localtime')),	
 	Count	 	INTEGER DEFAULT 0,
-	ReportedAt	NUMERIC DEFAULT NULL
+	ReportedAt	TEXT DEFAULT NULL,
+	LifeTime	INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS DNS_SUM
 (	
 	Query		TEXT PRIMARY KEY,
-	CreatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
-	UpdatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
+	CreatedAt 	TIMESTAMP DEFAULT (datetime('now','localtime')),	
+	UpdatedAt 	TIMESTAMP DEFAULT (datetime('now','localtime')),	
 	Count	 	INTEGER DEFAULT 0,
-	ReportedAt	NUMERIC DEFAULT NULL
+	ReportedAt	TEXT DEFAULT NULL
 );
 `
 
@@ -148,39 +152,56 @@ func (s *Storage) createDatabase() error {
 
 var insertProcesses = `
 INSERT INTO PROCESS_EVENTS (
-	Executable,
+	Name,
+	Status,
 	Interval,
-	ReportedAt
+	ReportedAt,
+	CreatedAt,
+	LifeTime
 ) 
 VALUES 
 (
 	?,
 	?,
-	? 
+	?,
+	?,
+	?,
+	?
 );
 `
 var updateProcessSum = `
 INSERT INTO PROCESS_SUM 
 (
-	Executable,
+	Name,
+	Status,
 	Count,
-	ReportedAt
+	ReportedAt,
+	CreatedAt,
+	LifeTime
 )
 VALUES
 (
 	?,
 	?,
+	?,
+	?,
+	?,
 	?
 )
-ON CONFLICT(Executable) DO UPDATE SET 
-	UpdatedAt=CURRENT_TIMESTAMP, 
+ON CONFLICT(Name) DO UPDATE SET 
+	UpdatedAt = datetime('now','localtime'), 
+	Status = ?,
 	Count = Count + ?,
-	ReportedAt = ?;
+	ReportedAt = ?,
+	LifeTime = ?;
 `
 
 type processHashItem struct {
 	Timestamp time.Time
 	Interval  int64
+	CreatedAt time.Time
+	Status    string
+	LifeTime  time.Duration
 }
 
 func (s *Storage) WriteProcessEntry(processes []*pw.ProcessInfo) error {
@@ -194,27 +215,33 @@ func (s *Storage) WriteProcessEntry(processes []*pw.ProcessInfo) error {
 	if err == nil {
 		hash := make(map[string]*processHashItem)
 		for _, p := range processes {
-			if v, found := hash[p.Executable]; found {
+			if v, found := hash[p.Name]; found {
 				if p.Timestamp.Before(v.Timestamp) {
 					v.Timestamp = p.Timestamp
 					v.Interval = p.Interval
+					v.CreatedAt = p.CreateTime
+					v.Status = p.Status
+					v.LifeTime = p.LifeTime
 				}
 			} else {
-				hash[p.Executable] = &processHashItem{
+				hash[p.Name] = &processHashItem{
 					Timestamp: p.Timestamp,
 					Interval:  p.Interval,
+					CreatedAt: p.CreateTime,
+					Status:    p.Status,
+					LifeTime:  p.LifeTime,
 				}
 			}
 		}
 
 		for k, v := range hash {
-			if rows, err = s.execute(insertProcesses, k, v.Interval, v.Timestamp.Local().UnixMicro()); err == nil {
+			if rows, err = s.execute(insertProcesses, k, v.Status, v.Interval, v.Timestamp, v.CreatedAt, v.LifeTime/time.Minute); err == nil {
 				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Process event data stored, %d rows inserted", rows)
 			} else {
 				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try insert event process into SQL: %s\nSQL: %s", err.Error(), insertProcesses)
 			}
 
-			if rows, err = s.execute(updateProcessSum, k, v.Interval, v.Timestamp.Local().UnixMicro(), v.Interval, v.Timestamp.Local().UnixMicro()); err == nil {
+			if rows, err = s.execute(updateProcessSum, k, v.Status, v.Interval, v.Timestamp, v.CreatedAt, v.LifeTime/time.Minute, v.Status, v.Interval, v.Timestamp, v.LifeTime/time.Minute); err == nil {
 				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Process sumarry is updatedd, %d rows inserted", rows)
 			} else {
 				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try update process summary into SQL: %s\nSQL: %s", err.Error(), updateProcessSum)
