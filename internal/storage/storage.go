@@ -217,11 +217,11 @@ func (s *Storage) WriteProcessEntry(processes []*pw.ProcessInfo) error {
 			if rows, err = s.execute(updateProcessSum, k, v.Interval, v.Timestamp.Local().UnixMicro(), v.Interval, v.Timestamp.Local().UnixMicro()); err == nil {
 				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Process sumarry is updatedd, %d rows inserted", rows)
 			} else {
-				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try update process sumary into SQL: %s\nSQL: %s", err.Error(), updateProcessSum)
+				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try update process summary into SQL: %s\nSQL: %s", err.Error(), updateProcessSum)
 			}
 		}
 
-		s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Infof("Processes affected on database: %d", len(hash))
+		s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Processes affected on database: %d", len(hash))
 	}
 
 	return err
@@ -305,9 +305,9 @@ func (s *Storage) WriteDnsMessage(msg *sniffer.DnsMsg) error {
 		}
 
 		if rows, err = s.execute(updateDnsMsgSum, msg.Query, msg.Timestamp.Local().UnixMicro(), msg.Timestamp.Local().UnixMicro()); err == nil {
-			s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Dns msgs sumarry is updatedd, %d rows inserted", rows)
+			s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Dns msgs summary is updated, %d rows inserted", rows)
 		} else {
-			s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try update dns sumary into SQL: %s\nSQL: %s", err.Error(), updateProcessSum)
+			s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try update dns summary into SQL: %s\nSQL: %s", err.Error(), updateProcessSum)
 		}
 	}
 

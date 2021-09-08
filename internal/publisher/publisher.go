@@ -52,7 +52,7 @@ func (d *DataPublisher) start() {
 			loggerContext.WithField("Type", "DnsMSg").WithField("When", dnsMsg.Timestamp.Format("2006-01-02 15:04:05.000")).Debugf("[%s:%s] %s: %s", dnsMsg.Hostname, dnsMsg.Device, dnsMsg.Message, dnsMsg.Query)
 			d.db.WriteDnsMessage(dnsMsg)
 		case processes := <-d.processQueue:
-			loggerContext.WithField("Type", "ProcessInfo").WithField("When", time.Now()).Infof("Process count: %d", len(processes))
+			loggerContext.WithField("Type", "ProcessInfo").WithField("When", time.Now()).Debugf("Process count: %d", len(processes))
 			d.db.WriteProcessEntry(processes)
 		}
 	}
