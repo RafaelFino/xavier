@@ -15,4 +15,5 @@
 vendor/
 build/
 bin/
+data/*.sqlite
 go.sum
