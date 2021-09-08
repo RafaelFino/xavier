@@ -2,7 +2,7 @@
 Platform to care what, when e how kids use the internet and their own PCs
 
 ## Motivators
-My kids loves to join some time surfing on the web or playing PC games (like Roblox or Minecraft) and they learn a lot of interstings things, I don't want to just cut the line, but I need to known what they are watching or put some limits
+My kids loves to join some time surfing on the web or playing PC games (like Roblox or Minecraft) and they learn a lot of interstings things, I don't want just to cut the line, but I need to known what they are watching or put some limits to drive that into a recreative and productive habbit
 
 ## The Names
 - Xavier: We love Marvel's characters and Professor Charles Xavier spent all his life to care special kids, because of this we choose him to name this project
