@@ -13,6 +13,7 @@ type ProcessInfo struct {
 	Executable string
 	Order      int
 	Timestamp  time.Time
+	Interval   int64
 }
 
 type ProcessCallback func([]*ProcessInfo)
@@ -73,6 +74,7 @@ func (p *ProcessWatcher) Execute() {
 			PPid:       c.PPid(),
 			Executable: c.Executable(),
 			Timestamp:  time.Now(),
+			Interval:   p.interval,
 		}
 	}
 

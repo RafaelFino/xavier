@@ -5,9 +5,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/RafaelFino/xavier/internal/datawriter"
 	sniffer "github.com/RafaelFino/xavier/internal/dns-sniffer"
 	pw "github.com/RafaelFino/xavier/internal/process-watcher"
+	"github.com/RafaelFino/xavier/internal/publisher"
 )
 
 var logger *logrus.Logger
@@ -19,14 +19,14 @@ func main() {
 	customFormatter.FullTimestamp = true
 	logger.SetFormatter(customFormatter)
 
-	ozymandias := datawriter.New(logger)
+	p := publisher.New(logger)
+	defer p.Stop()
 
-	s := sniffer.New(logger, ozymandias.ReceiveDNSMessage)
-	w := pw.New(logger, ozymandias.ReceiveProcesses)
+	s := sniffer.New(logger, p.ReceiveDNSMessage)
+	defer s.Stop()
+
+	w := pw.New(logger, p.ReceiveProcesses)
+	defer w.Stop()
 
 	fmt.Scanln()
-
-	s.Stop()
-	w.Stop()
-	ozymandias.Stop()
 }
