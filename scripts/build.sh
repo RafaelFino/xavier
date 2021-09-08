@@ -19,6 +19,8 @@ build_dir="${__proj_dir}/bin"
 built=()
 md5sum=""
 
+printf "\e[33m%s\e[39m\tStarting build process: %s" "[EXEC]" 
+go version
 
 printf "\e[33m%s\e[39m\tgo mod tidy...\n" "[EXEC]"
 go mod tidy
@@ -58,7 +60,7 @@ if [ -d "./cmd" ]; then
             if GOOS=${goos} GOARCH=${goarch} go build -mod=vendor -o ${output_bin} -a -ldflags "-s -w" ${target} ; then
                 built+=(${output_bin})
                 md5sum=$(md5sum $output_bin)
-                printf "\e[92m%s\e[39m\t%s\n" "[DONE]" "${md5sum}"
+                printf "\e[92m%s\e[39m\t%s.md5\n" "[DONE]" "${md5sum}"
                 echo "${md5sum}" > ${output_bin}.md5
             else
                 printf "\e[1;91m%s\e[0;39m\t%s\n" "[FAIL]" "${output_bin}"
@@ -66,7 +68,7 @@ if [ -d "./cmd" ]; then
         done
     done
 
-    printf "\n-Output:\n"
+    printf "\nOutput:\n"
     for output in "${built[@]}"
     do
         chmod +x ${output}
