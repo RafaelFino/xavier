@@ -112,7 +112,7 @@ func (s *DnsSniffer) read(dev pcap.Interface) {
 		default:
 			data, _, err := handle.ReadPacketData()
 			if err != nil {
-				s.logger.Errorf("Error reading packet data: ", err)
+				s.logger.Errorf("Error reading packet data: %s", err.Error())
 				continue
 			}
 
