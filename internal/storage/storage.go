@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	sniffer "github.com/RafaelFino/xavier/internal/dns-sniffer"
@@ -34,8 +35,8 @@ func New(logger *logrus.Logger) *Storage {
 }
 
 func (s *Storage) start() error {
-	s.dbPath = fmt.Sprintf(`data/database_%s.sqlite`, time.Now().Format("20170831"))
-	s.openDate = time.Now().Format("20170831")
+	s.dbPath = fmt.Sprintf(`data/database_%s.sqlite`, time.Now().Format("2006-01-02"))
+	s.openDate = time.Now().Format("2006-01-02")
 
 	var err error
 
@@ -67,7 +68,7 @@ func (s *Storage) Stop() {
 func (s *Storage) check() error {
 	var err error
 
-	if s.openDate != time.Now().Format("20170831") {
+	if s.openDate != time.Now().Format("2006-01-02") {
 		s.Stop()
 		err = s.start()
 	}
@@ -85,7 +86,7 @@ func (s *Storage) check() error {
 }
 
 var createDBScript = `
-CREATE TABLE IF NOT EXISTS DNS_MSGS 
+CREATE TABLE IF NOT EXISTS DNS_MSGS
 (	
 	Id INTEGER PRIMARY KEY AUTOINCREMENT,
 	CreatedAt		TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
@@ -100,19 +101,34 @@ CREATE TABLE IF NOT EXISTS DNS_MSGS
 	DnsResponseCode TEXT DEFAULT NULL,
 	DnsOpCode       TEXT DEFAULT NULL,
 	Hostname        TEXT DEFAULT NULL,
-	Timestamp		TIMESTAMP
+	ReportedAt		NUMERIC DEFAULT NULL
 );
 
-CREATE TABLE IF NOT EXISTS PROCESSES
+CREATE TABLE IF NOT EXISTS PROCESS_EVENTS
 (	
 	Id INTEGER PRIMARY KEY AUTOINCREMENT,
 	CreatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
 	Executable	TEXT NOT NULL,
-	Pid			INTEGER NOT NULL,
-	PPid		INTEGER NOT NULL,	
-	Order		INTEGER DEFAULT NULL,	
-	Timestamp   TIMESTAMP DEFAULT NULL,
-	Interval 	INTEGER DEFAULT 10
+	Interval 	INTEGER DEFAULT 10,
+	ReportedAt	NUMERIC DEFAULT NULL
+);
+
+CREATE TABLE IF NOT EXISTS PROCESS_SUM
+(	
+	Executable	TEXT PRIMARY KEY,
+	CreatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
+	UpdatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
+	Count	 	INTEGER DEFAULT 0,
+	ReportedAt	NUMERIC DEFAULT NULL
+);
+
+CREATE TABLE IF NOT EXISTS DNS_SUM
+(	
+	Query		TEXT PRIMARY KEY,
+	CreatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
+	UpdatedAt 	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,	
+	Count	 	INTEGER DEFAULT 0,
+	ReportedAt	NUMERIC DEFAULT NULL
 );
 `
 
@@ -130,22 +146,197 @@ func (s *Storage) createDatabase() error {
 	return err
 }
 
+var insertProcesses = `
+INSERT INTO PROCESS_EVENTS (
+	Executable,
+	Interval,
+	ReportedAt
+) 
+VALUES 
+(
+	?,
+	?,
+	? 
+);
+`
+var updateProcessSum = `
+INSERT INTO PROCESS_SUM 
+(
+	Executable,
+	Count,
+	ReportedAt
+)
+VALUES
+(
+	?,
+	?,
+	?
+)
+ON CONFLICT(Executable) DO UPDATE SET 
+	UpdatedAt=CURRENT_TIMESTAMP, 
+	Count = Count + ?,
+	ReportedAt = ?;
+`
+
+type processHashItem struct {
+	Timestamp time.Time
+	Interval  int64
+}
+
 func (s *Storage) WriteProcessEntry(processes []*pw.ProcessInfo) error {
+	if len(processes) == 0 {
+		return nil
+	}
+
 	err := s.check()
+	var rows int64
 
 	if err == nil {
-		s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Info("Data stored")
+		hash := make(map[string]*processHashItem)
+		for _, p := range processes {
+			if v, found := hash[p.Executable]; found {
+				if p.Timestamp.Before(v.Timestamp) {
+					v.Timestamp = p.Timestamp
+					v.Interval = p.Interval
+				}
+			} else {
+				hash[p.Executable] = &processHashItem{
+					Timestamp: p.Timestamp,
+					Interval:  p.Interval,
+				}
+			}
+		}
+
+		for k, v := range hash {
+			if rows, err = s.execute(insertProcesses, k, v.Interval, v.Timestamp.Local().UnixMicro()); err == nil {
+				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Process event data stored, %d rows inserted", rows)
+			} else {
+				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try insert event process into SQL: %s\nSQL: %s", err.Error(), insertProcesses)
+			}
+
+			if rows, err = s.execute(updateProcessSum, k, v.Interval, v.Timestamp.Local().UnixMicro(), v.Interval, v.Timestamp.Local().UnixMicro()); err == nil {
+				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Process sumarry is updatedd, %d rows inserted", rows)
+			} else {
+				s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try update process sumary into SQL: %s\nSQL: %s", err.Error(), updateProcessSum)
+			}
+		}
+
+		s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Infof("Processes affected on database: %d", len(hash))
 	}
 
 	return err
 }
 
+var insertDnsMsg = `
+INSERT INTO DNS_MSGS
+(
+	Device,
+	Message,
+	SourceIP,
+	DestinationIP,
+	Query,
+	Answer,
+	AnswerTTL,
+	NumberOfAnswers,
+	DnsResponseCode,
+	DnsOpCode,
+	Hostname,
+	ReportedAt
+) 
+VALUES 
+(
+	?, --Device,
+	?, --Message,
+	?, --SourceIP,
+	?, --DestinationIP,
+	?, --Query,
+	?, --Answer,
+	?, --AnswerTTL,
+	?, --NumberOfAnswers,
+	?, --DnsResponseCode,
+	?, --DnsOpCode,
+	?, --Hostname,
+	? --ReportedAt	
+);
+`
+
+var updateDnsMsgSum = `
+INSERT INTO DNS_SUM 
+(
+	Query,
+	Count,
+	ReportedAt
+)
+VALUES
+(
+	?,
+	1,
+	?
+)
+ON CONFLICT(Query) DO UPDATE SET 
+	UpdatedAt=CURRENT_TIMESTAMP, 
+	Count = Count + 1,
+	ReportedAt = ?;
+`
+
 func (s *Storage) WriteDnsMessage(msg *sniffer.DnsMsg) error {
 	err := s.check()
 
 	if err == nil {
-		s.logger.WithField("Source", "Storage").WithField("Trace", "WriteDnsMessage").Info("Data stored")
+		var rows int64
+
+		if rows, err = s.execute(insertDnsMsg,
+			msg.Device,
+			msg.Message,
+			msg.SourceIP,
+			msg.DestinationIP,
+			msg.Query,
+			strings.Join(msg.Answer, ","),
+			strings.Join(msg.AnswerTTL, ","),
+			msg.NumberOfAnswers,
+			msg.DnsResponseCode,
+			msg.DnsOpCode,
+			msg.Hostname,
+			msg.Timestamp.Local().UnixMicro(),
+		); err == nil {
+			s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Data stored, %d rows inserted", rows)
+		} else {
+			s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try insert processes into SQL: %s\nSQL: %s", err.Error(), insertDnsMsg)
+		}
+
+		if rows, err = s.execute(updateDnsMsgSum, msg.Query, msg.Timestamp.Local().UnixMicro(), msg.Timestamp.Local().UnixMicro()); err == nil {
+			s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Debugf("Dns msgs sumarry is updatedd, %d rows inserted", rows)
+		} else {
+			s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Errorf("Fail to try update dns sumary into SQL: %s\nSQL: %s", err.Error(), updateProcessSum)
+		}
 	}
 
 	return err
+}
+
+func (s *Storage) execute(statment string, args ...interface{}) (int64, error) {
+	rows := int64(-1)
+	var err error
+
+	if len(statment) == 0 {
+		return rows, nil
+	}
+
+	if err = s.check(); err == nil {
+		var result sql.Result
+
+		if result, err = s.db.Exec(statment, args...); err == nil {
+			rows, err = result.RowsAffected()
+
+			if err != nil {
+				s.logger.WithField("Source", "Storage").WithField("Trace", "execute").Errorf("Fail to get SQL insert result: %s", err.Error())
+			} else {
+				s.logger.WithField("Source", "Storage").WithField("Trace", "execute").Debugf("SQL statment executed, %d rows affected", rows)
+			}
+		} else {
+			s.logger.WithField("Source", "Storage").WithField("Trace", "execute").Errorf("Fail to try execute SQL statment: %s\nSQL: %s", err.Error(), statment)
+		}
+	}
+
+	return rows, err
 }
