@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	//"github.com/mitchellh/go-ps"
-
 	ps "github.com/shirou/gopsutil/v3/process"
 	"github.com/sirupsen/logrus"
 )
