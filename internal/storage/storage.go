@@ -7,11 +7,11 @@ import (
 
 	sniffer "github.com/RafaelFino/xavier/internal/dns-sniffer"
 	pw "github.com/RafaelFino/xavier/internal/process-watcher"
-	. "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/sirupsen/logrus"
 )
 
-var dbDriver = "sqlite3_extended"
+var dbDriver = "sqlite3"
 
 type Storage struct {
 	logger        *logrus.Logger
@@ -23,14 +23,18 @@ type Storage struct {
 }
 
 func New(logger *logrus.Logger) *Storage {
-	return &Storage{
+	ret := &Storage{
 		logger:        logger,
 		checkInterval: 10 * time.Second,
 	}
+
+	ret.start()
+
+	return ret
 }
 
 func (s *Storage) start() error {
-	s.dbPath = fmt.Sprint(`./data/database_%s.sqlite`, time.Now().Format("20170831"))
+	s.dbPath = fmt.Sprintf(`data/database_%s.sqlite`, time.Now().Format("20170831"))
 	s.openDate = time.Now().Format("20170831")
 
 	var err error
@@ -41,6 +45,8 @@ func (s *Storage) start() error {
 		s.logger.WithField("Source", "Storage").WithField("Trace", "start").Errorf("Fail to open SQLite file database: [Path: %s] error: %s", s.dbPath, err.Error())
 		return err
 	}
+
+	s.logger.WithField("Source", "Storage").WithField("Trace", "start").Infof("SQLite file database created on %s", s.dbPath)
 
 	err = s.createDatabase()
 
@@ -128,7 +134,7 @@ func (s *Storage) WriteProcessEntry(processes []*pw.ProcessInfo) error {
 	err := s.check()
 
 	if err == nil {
-
+		s.logger.WithField("Source", "Storage").WithField("Trace", "WriteProcessEntry").Info("Data stored")
 	}
 
 	return err
@@ -138,7 +144,7 @@ func (s *Storage) WriteDnsMessage(msg *sniffer.DnsMsg) error {
 	err := s.check()
 
 	if err == nil {
-
+		s.logger.WithField("Source", "Storage").WithField("Trace", "WriteDnsMessage").Info("Data stored")
 	}
 
 	return err

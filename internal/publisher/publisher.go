@@ -5,6 +5,7 @@ import (
 
 	sniffer "github.com/RafaelFino/xavier/internal/dns-sniffer"
 	pw "github.com/RafaelFino/xavier/internal/process-watcher"
+	"github.com/RafaelFino/xavier/internal/storage"
 	"github.com/sirupsen/logrus"
 )
 
@@ -14,6 +15,7 @@ type DataPublisher struct {
 	processQueue chan []*pw.ProcessInfo
 	dnsMsgsQueue chan *sniffer.DnsMsg
 	endSignal    chan bool
+	db           *storage.Storage
 }
 
 func New(logger *logrus.Logger) *DataPublisher {
@@ -39,18 +41,22 @@ func (d *DataPublisher) ReceiveDNSMessage(msg *sniffer.DnsMsg) {
 
 func (d *DataPublisher) start() {
 	loggerContext := d.logger.WithField("Source", "Data-Publisher")
+	d.db = storage.New(d.logger)
+
 	for {
 		select {
 		case <-d.endSignal:
 			loggerContext.Infof("Stop requested")
 			return
 		case dnsMsg := <-d.dnsMsgsQueue:
-			loggerContext.WithField("Type", "DnsMSg").WithField("When", dnsMsg.Timestamp.Format("2006-01-02 15:04:05.000")).Infof("[%s:%s] %s: %s", dnsMsg.Hostname, dnsMsg.Device, dnsMsg.Message, dnsMsg.Query)
+			loggerContext.WithField("Type", "DnsMSg").WithField("When", dnsMsg.Timestamp.Format("2006-01-02 15:04:05.000")).Debugf("[%s:%s] %s: %s", dnsMsg.Hostname, dnsMsg.Device, dnsMsg.Message, dnsMsg.Query)
+			d.db.WriteDnsMessage(dnsMsg)
 		case processes := <-d.processQueue:
 			loggerContext.WithField("Type", "ProcessInfo").WithField("When", time.Now()).Infof("Process count: %d", len(processes))
 			for _, p := range processes {
 				loggerContext.WithField("Type", "ProcessInfo").WithField("When", time.Now()).Debugf("[%s] Process Pid: %d\tExecutable: %s", p.Timestamp.Format("2006-01-02 15:04:05.000"), p.Pid, p.Executable)
 			}
+			d.db.WriteProcessEntry(processes)
 		}
 	}
 }
